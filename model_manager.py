@@ -221,28 +221,53 @@ class ModelManager:
             return False
     
     def _load_imagebind(self, model_config: ModelConfig) -> bool:
-        """Load ImageBind model"""
+        """Load ImageBind model with fallback to custom implementation"""
+        self.logger.info("📥 Loading ImageBind model...")
         try:
             import imagebind.models.imagebind_model as imagebind_model
-            from imagebind.models import imagebind_model
-            
-            self.logger.info("📥 Loading ImageBind model...")
-            
-            # Load model
-            model = imagebind_model.imagebind_huge(pretrained=True)
+            from imagebind import data
+            from imagebind.models.imagebind_model import ModalityType
+
+            self.logger.info("✅ Using original ImageBind")
+
+            # Load original ImageBind model
             device = self._get_optimal_device(model_config.device)
-            model = model.to(device)
+            model = imagebind_model.imagebind_huge(pretrained=True)
             model.eval()
-            
-            self.models['imagebind'] = model
-            self.logger.info(f"✅ ImageBind loaded on {device}")
+            model.to(device)
+
+            self.models['imagebind'] = {
+                'model': model,
+                'data': data,
+                'ModalityType': ModalityType,
+                'device': device
+            }
+
+            self.logger.info(f"✅ Original ImageBind loaded on {device}")
             return True
-            
-        except ImportError:
-            self.logger.error("❌ ImageBind not installed. Install with: pip install imagebind")
-            return False
+        except ImportError as e:
+            # Fallback to custom implementation
+            self.logger.info(f"⚠️ Original ImageBind not available ({e}), using custom implementation")
+
+            # Import custom ImageBind
+            from custom_imagebind import CustomImageBind, data, imagebind_huge, ModalityType
+
+            # Load custom model
+            model = imagebind_huge(pretrained=True)
+
+            self.models['imagebind'] = {
+                'model': model,
+                'data': data,
+                'ModalityType': ModalityType,
+                'device': model.device
+            }
+
+            self.logger.info(f"✅ Custom ImageBind loaded on {model.device}")
+            return True
         except Exception as e:
-            self.logger.error(f"❌ Error loading ImageBind: {e}")
+            self.logger.error(f"❌ Failed to load ImageBind: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
     def _load_minicpm_v(self, model_config: ModelConfig) -> bool:
